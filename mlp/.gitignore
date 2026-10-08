@@ -1,0 +1,22 @@
+# simulation outputs
+*.vvp
+*.vcd
+*.fst
+*.saif
+obj_dir/
+sim/*.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Vivado
+*.jou
+*.log
+*.str
+.Xil/
+vivado*/
+*.runs/
+*.cache/
+*.hw/
+*.ip_user_files/
