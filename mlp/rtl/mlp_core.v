@@ -45,20 +45,30 @@ module mlp_core #(
 
     // ------------------------------------------------------------ layer 1
     wire [M1*8-1:0] x_sk;
-    skew_buf #(.N(M1)) u_skew1 (.clk(clk), .din(x_reg), .dout(x_sk));
+
+    skew_buf #(.N(M1)) u_skew1 (
+        .clk(clk),
+        .din(x_reg),
+        .dout(x_sk)
+    ); //to align the partial products with corr features.weights
 
     wire signed [ACC1-1:0] ps1   [0:N1-1][0:M1];   // psum chain wires
     wire        [N1*8-1:0] h_vec;                  // requantised hidden vector
     reg         [N1*8-1:0] h_reg;
-
+    //systolic array
     genvar i, j;
     generate
         for (i = 0; i < N1; i = i + 1) begin : g_l1_chain
             assign ps1[i][0] = B1[i*32 +: ACC1];         // bias = initial psum
             for (j = 0; j < M1; j = j + 1) begin : g_pe
+
                 pe #(.W(W1[(i*M1 + j)*8 +: 8]), .ACC(ACC1)) u_pe (
-                    .clk(clk), .x(x_sk[j*8 +: 8]),
-                    .psum_in(ps1[i][j]), .psum_out(ps1[i][j+1]));
+                    .clk(clk),
+                    .x(x_sk[j*8 +: 8]),
+                    .psum_in(ps1[i][j]),
+                    .psum_out(ps1[i][j+1])
+                );
+            
             end
             requant #(.ACC(ACC1), .M(`RQ_M), .SH(`RQ_SH)) u_rq (
                 .acc(ps1[i][M1]), .y(h_vec[i*8 +: 8]));
@@ -69,17 +79,27 @@ module mlp_core #(
 
     // ------------------------------------------------------------ layer 2
     wire [N1*8-1:0] h_sk;
-    skew_buf #(.N(N1)) u_skew2 (.clk(clk), .din(h_reg), .dout(h_sk));
+
+    skew_buf #(.N(N1)) u_skew2 (
+        .clk(clk),
+        .din(h_reg),
+        .dout(h_sk)
+    );
 
     wire signed [ACC2-1:0] ps2 [0:N2-1][0:N1];
 
     generate
         for (i = 0; i < N2; i = i + 1) begin : g_l2_chain
-            assign ps2[i][0] = B2[i*32 +: ACC2];
+
             for (j = 0; j < N1; j = j + 1) begin : g_pe
+        
                 pe #(.W(W2[(i*N1 + j)*8 +: 8]), .ACC(ACC2)) u_pe (
-                    .clk(clk), .x(h_sk[j*8 +: 8]),
-                    .psum_in(ps2[i][j]), .psum_out(ps2[i][j+1]));
+                    .clk(clk),
+                    .x(h_sk[j*8 +: 8]),
+                    .psum_in(ps2[i][j]),
+                    .psum_out(ps2[i][j+1])
+                );
+        
             end
         end
     endgenerate
@@ -88,12 +108,18 @@ module mlp_core #(
     // first maximum wins (matches numpy argmax). Combinational over N2=10;
     // for a higher Fmax, split it into a registered 2-level compare tree.
     reg signed [ACC2-1:0] best;
-    reg        [3:0]      best_i;
-    integer               k;
+    reg [3:0] best_i;
+    integer k;
+    
     always @* begin
-        best = ps2[0][N1]; best_i = 4'd0;
+        best = ps2[0][N1];
+        best_i = 4'd0;
+    
         for (k = 1; k < N2; k = k + 1)
-            if (ps2[k][N1] > best) begin best = ps2[k][N1]; best_i = k; end
+            if (ps2[k][N1] > best) begin
+                best = ps2[k][N1];
+                best_i = k;
+            end
     end
 
     // ------------------------------------------------------------ valid / tag pipe
